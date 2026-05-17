@@ -18,8 +18,14 @@ async def _get_active_cycle():
 
 
 async def _assert_goal_setting_window(cycle):
-    now = datetime.now(timezone.utc)
-    if not (cycle.goalSettingStart <= now <= cycle.goalSettingEnd):
+    # Dates are stored in Neon as naive local-time datetimes (IST midnight as entered by admin).
+    # Using UTC for 'now' causes a 5.5-hour mismatch — window appears closed until 05:30 IST.
+    # Use datetime.now() (server local time, no tz) to match how the DB dates were entered.
+    now   = datetime.now()
+    start = cycle.goalSettingStart.replace(tzinfo=None) if cycle.goalSettingStart.tzinfo else cycle.goalSettingStart
+    end   = cycle.goalSettingEnd.replace(tzinfo=None)   if cycle.goalSettingEnd.tzinfo   else cycle.goalSettingEnd
+
+    if not (start <= now <= end):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Goal setting window is currently closed",

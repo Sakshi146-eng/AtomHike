@@ -8,14 +8,21 @@ from app.utils.uom import calculate_achievement, achievement_to_percentage
 
 
 async def _get_active_quarter_window(cycle_id: str):
-    now = datetime.now(timezone.utc)
-    window = await db.quarterwindow.find_first(
-        where={
-            "cycleId": cycle_id,
-            "windowOpen": {"lte": now},
-            "windowClose": {"gte": now},
-            "isActive": True,
-        }
+    # Dates stored as naive local-time (IST) datetimes in Neon.
+    # Use datetime.now() (server local time) to avoid UTC 5.5-hour mismatch.
+    now = datetime.now()
+
+    windows = await db.quarterwindow.find_many(
+        where={"cycleId": cycle_id, "isActive": True}
+    )
+    window = next(
+        (
+            w for w in windows
+            if (w.windowOpen.replace(tzinfo=None) if w.windowOpen.tzinfo else w.windowOpen)
+               <= now <=
+               (w.windowClose.replace(tzinfo=None) if w.windowClose.tzinfo else w.windowClose)
+        ),
+        None,
     )
     if not window:
         raise HTTPException(
