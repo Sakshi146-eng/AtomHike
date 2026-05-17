@@ -44,7 +44,10 @@ def calculate_achievement(
         # Date-based: completed on/before deadline = 100%, else 50%
         if actual_date is None or target_date is None:
             return 0.0
-        return 1.0 if actual_date <= target_date else 0.5
+        # Normalize both to naive UTC to avoid offset-naive vs offset-aware error
+        ad = actual_date.replace(tzinfo=None) if actual_date.tzinfo else actual_date
+        td = target_date.replace(tzinfo=None) if target_date.tzinfo else target_date
+        return 1.0 if ad <= td else 0.5
 
     elif uom_type == UoMType.ZERO_BASED:
         # Zero = success; anything else = failure

@@ -28,7 +28,7 @@ export default function AdminDashboard() {
       listUsers(),
       getActiveCycle().catch(() => ({ data: null })),
       getAllGoals().catch(() => ({ data: [] })),
-      getAuditTrail({ limit: 8 }).catch(() => ({ data: [] })),
+      getAuditTrail({ take: 8 }).catch(() => ({ data: [] })),
     ]).then(([ur, cr, gr, ar]) => {
       setUsers(ur.data);
       setCycle(cr.data);

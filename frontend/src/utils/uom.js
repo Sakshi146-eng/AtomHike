@@ -8,23 +8,29 @@ export const UOM_LABELS = {
 
 // Compute achievement % on the frontend (mirrors backend UoM engine)
 export function computeAchievement(uomType, targetValue, actualValue, targetDate, actualDate) {
-  if (!actualValue && !actualDate) return null;
+  const hasActualValue = actualValue !== null && actualValue !== undefined && actualValue !== "";
+  const hasActualDate  = !!actualDate;
+  if (!hasActualValue && !hasActualDate) return null;
+
   switch (uomType) {
     case "MIN":
-      if (!targetValue || targetValue === 0) return null;
+      if (!targetValue || targetValue === 0 || !hasActualValue) return null;
       return Math.min((actualValue / targetValue) * 100, 150);
     case "MAX":
-      if (!actualValue || actualValue === 0) return null;
+      if (!targetValue || !hasActualValue) return null;
+      if (actualValue === 0) return 150;  // Zero cost/bugs = max performance
       return Math.min((targetValue / actualValue) * 100, 150);
     case "TIMELINE":
-      if (!targetDate || !actualDate) return null;
+      if (!targetDate || !hasActualDate) return null;
       return new Date(actualDate) <= new Date(targetDate) ? 100 : 50;
     case "ZERO_BASED":
-      return actualValue === 0 ? 100 : 0;
+      if (!hasActualValue) return null;
+      return Number(actualValue) === 0 ? 100 : 0;  // ✅ 0 → 100%, anything else → 0%
     default:
       return null;
   }
 }
+
 
 export function achievementColor(pct) {
   if (pct === null || pct === undefined) return "text-slate-400";

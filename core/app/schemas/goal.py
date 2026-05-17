@@ -32,6 +32,16 @@ class GoalUpdate(BaseModel):
     targetDate: Optional[datetime] = None
     weightage: Optional[float] = None
 
+    @field_validator("weightage")
+    @classmethod
+    def weightage_range(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None:
+            if v < 10:
+                raise ValueError("Minimum weightage per goal is 10")
+            if v > 100:
+                raise ValueError("Maximum weightage per goal is 100")
+        return v
+
 
 class ManagerGoalEdit(BaseModel):
     """Manager can edit target or weightage during approval review."""

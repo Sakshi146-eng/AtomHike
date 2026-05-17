@@ -27,29 +27,32 @@ export default function GoalsPage() {
   const [windowOpen, setWindowOpen] = useState(false);
 
   const load = async () => {
-    const [gr, tar, cr] = await Promise.all([
-      getMyGoals(),
-      listThrustAreas(),
-      getActiveCycle().catch(() => ({ data: null })),
-    ]);
-    setGoals(gr.data);
-    setThrustAreas(tar.data);
-    if (cr.data) {
-      const now = new Date();
-      const start = new Date(cr.data.goalSettingStart);
-      const end   = new Date(cr.data.goalSettingEnd);
-      setWindowOpen(start <= now && now <= end);
+    try {
+      const [gr, tar, cr] = await Promise.all([
+        getMyGoals(),
+        listThrustAreas(),
+        getActiveCycle().catch(() => ({ data: null })),
+      ]);
+      setGoals(gr.data);
+      setThrustAreas(tar.data);
+      if (cr.data) {
+        const now = new Date();
+        setWindowOpen(new Date(cr.data.goalSettingStart) <= now && now <= new Date(cr.data.goalSettingEnd));
+      }
+    } catch (err) {
+      toast.error("Failed to load goals page");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const draftGoals  = goals.filter(g => g.status === "DRAFT");
+  const draftGoals    = goals.filter(g => g.status === "DRAFT");
   const rejectedGoals = goals.filter(g => g.status === "REJECTED");
-  const totalWeight = draftGoals.reduce((s, g) => s + g.weightage, 0);
-  const canSubmit   = draftGoals.length > 0;   // no 100% requirement on frontend
-  const weightOk    = Math.round(totalWeight) === 100;
+  const totalWeight   = draftGoals.reduce((s, g) => s + g.weightage, 0);
+  const weightOk      = Math.round(totalWeight) === 100;
+  const canSubmit     = draftGoals.length > 0 && weightOk; // BRD: must be exactly 100%
 
   const openCreate = () => { setEditGoal(null); setForm(EMPTY_FORM); setSlideOpen(true); };
   const openEdit   = (g)  => { setEditGoal(g);   setForm({ title: g.title, description: g.description || "", thrustAreaId: g.thrustAreaId, uomType: g.uomType, targetValue: g.targetValue || "", targetDate: g.targetDate || "", weightage: g.weightage }); setSlideOpen(true); };
@@ -58,13 +61,27 @@ export default function GoalsPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const payload = { ...form, targetValue: form.targetValue ? parseFloat(form.targetValue) : null, weightage: parseFloat(form.weightage) };
+      const payload = {
+        thrustAreaId: form.thrustAreaId,
+        title:        form.title.trim(),
+        uomType:      form.uomType,
+        weightage:    parseFloat(form.weightage),
+      };
+      // Only include optional fields if they have a value
+      if (form.description?.trim()) payload.description = form.description.trim();
+      if (form.targetValue)         payload.targetValue  = parseFloat(form.targetValue);
+      if (form.targetDate)          payload.targetDate   = form.targetDate;
+
       if (editGoal) { await updateGoal(editGoal.id, payload); toast.success("Goal updated"); }
       else           { await createGoal(payload);               toast.success("Goal created"); }
       setSlideOpen(false);
       load();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Failed to save goal");
+      const detail = err.response?.data?.detail;
+      const msg = Array.isArray(detail)
+        ? detail.map(d => d.msg || d.message || JSON.stringify(d)).join("; ")
+        : (typeof detail === "string" ? detail : "Failed to save goal");
+      toast.error(msg);
     } finally { setSaving(false); }
   };
 
@@ -98,11 +115,29 @@ export default function GoalsPage() {
           <h2 className="text-xl font-bold text-slate-800">My Goals</h2>
           <p className="text-sm text-slate-500">{goals.length} goal{goals.length !== 1 ? "s" : ""} this cycle</p>
         </div>
-        <div className="flex gap-2">
-          {windowOpen && goals.length < 8 && (
-            <motion.button whileTap={{ scale: 0.96 }} onClick={openCreate} className="btn-primary">
-              <Plus className="w-4 h-4" /> Add Goal
-            </motion.button>
+        <div className="flex gap-2 items-center">
+          {goals.length < 8 ? (
+            <div className="relative group">
+              <motion.button
+                whileTap={windowOpen ? { scale: 0.96 } : {}}
+                onClick={windowOpen ? openCreate : undefined}
+                disabled={!windowOpen}
+                className={`btn-primary ${!windowOpen ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <Plus className="w-4 h-4" /> Add Goal
+              </motion.button>
+              {!windowOpen && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5
+                  bg-slate-800 text-white text-xs rounded-lg whitespace-nowrap opacity-0
+                  group-hover:opacity-100 transition-opacity pointer-events-none z-10">
+                  Goal-setting window is currently closed
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-4
+                    border-transparent border-t-slate-800" />
+                </div>
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-slate-400 italic">Max 8 goals reached</span>
           )}
           {draftGoals.length > 0 && (
             <motion.button whileTap={{ scale: 0.96 }} onClick={handleSubmit}
@@ -113,6 +148,7 @@ export default function GoalsPage() {
             </motion.button>
           )}
         </div>
+
       </div>
 
       {/* Weightage tracker */}
@@ -135,7 +171,12 @@ export default function GoalsPage() {
               className={`h-2 rounded-full transition-colors ${weightOk ? "bg-emerald-500" : totalWeight > 100 ? "bg-red-500" : "bg-amber-500"}`}
             />
           </div>
-          {!weightOk && <p className="text-xs text-amber-500 mt-1.5">Tip: total weightage is {totalWeight}%. You can still submit — manager will review.</p>}
+          {!weightOk && <p className="text-xs mt-1.5 font-medium"
+            style={{color: totalWeight > 100 ? '#ef4444' : '#f59e0b'}}>
+            {totalWeight > 100
+              ? `⚠ Over by ${totalWeight - 100}% — reduce goal weightages before submitting`
+              : `${100 - totalWeight}% remaining — reach exactly 100% to submit for approval`}
+          </p>}
         </div>
       )}
 
@@ -176,24 +217,47 @@ export default function GoalsPage() {
           </div>
           <div>
             <label className="label">UoM Type *</label>
-            <select className="input" value={form.uomType} onChange={e => setForm({...form, uomType: e.target.value})}>
+            <select className="input" value={form.uomType} onChange={e => setForm({...form, uomType: e.target.value, targetValue: "", targetDate: ""})}>
               {Object.entries(UOM_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label} — {v.hint}</option>)}
             </select>
+            {/* Context hint based on selection */}
+            <p className="text-xs mt-1.5 px-2.5 py-1.5 rounded-lg inline-block
+              bg-brand-50 text-brand-700 font-medium">
+              {form.uomType === "MIN"        && "📈 Enter a numeric target to exceed (e.g. revenue ₹50L)"}
+              {form.uomType === "MAX"        && "📉 Enter a numeric target to stay below (e.g. TAT < 5 days)"}
+              {form.uomType === "TIMELINE"   && "📅 Enter the completion date for this goal"}
+              {form.uomType === "ZERO_BASED" && "✅ No target needed — goal is achieved when value = 0"}
+            </p>
           </div>
+
+          {/* Target Value — shown for MIN / MAX */}
           {(form.uomType === "MIN" || form.uomType === "MAX") && (
             <div>
-              <label className="label">Target Value *</label>
-              <input className="input" type="number" placeholder="e.g., 100" required={form.uomType !== "ZERO_BASED"}
-                value={form.targetValue} onChange={e => setForm({...form, targetValue: e.target.value})} />
+              <label className="label">
+                Target Value *
+                <span className="ml-2 text-xs font-normal text-slate-400">
+                  ({form.uomType === "MIN" ? "achieve ≥ this number" : "achieve ≤ this number"})
+                </span>
+              </label>
+              <input className="input" type="number" step="any" placeholder="e.g., 100"
+                required value={form.targetValue}
+                onChange={e => setForm({...form, targetValue: e.target.value})} />
             </div>
           )}
+
+          {/* Target Date — shown for TIMELINE */}
           {form.uomType === "TIMELINE" && (
             <div>
-              <label className="label">Target Date *</label>
+              <label className="label">
+                Target Date *
+                <span className="ml-2 text-xs font-normal text-slate-400">(deadline for completion)</span>
+              </label>
               <input className="input" type="date" required
-                value={form.targetDate} onChange={e => setForm({...form, targetDate: e.target.value})} />
+                value={form.targetDate}
+                onChange={e => setForm({...form, targetDate: e.target.value})} />
             </div>
           )}
+
           <div>
             <label className="label">Weightage (%) *</label>
             <input className="input" type="number" min="10" max="100" placeholder="Min 10%" required

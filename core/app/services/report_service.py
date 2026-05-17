@@ -59,7 +59,7 @@ async def get_achievement_data(cycle_id: Optional[str] = None, manager_id: Optio
 
 
 async def get_completion_data(cycle_id: Optional[str] = None, manager_id: Optional[str] = None):
-    """Who completed check-ins vs who didn't per quarter."""
+    """Per-employee, per-quarter check-in completion and achievement."""
     where: dict = {"status": "LOCKED"}
     if cycle_id:
         where["cycleId"] = cycle_id
@@ -68,7 +68,10 @@ async def get_completion_data(cycle_id: Optional[str] = None, manager_id: Option
 
     goals = await db.goal.find_many(
         where=where,
-        include={"owner": True, "checkIns": {"include": {"quarterWindow": True}}},
+        include={
+            "owner": True,
+            "checkIns": {"include": {"quarterWindow": True}},
+        },
     )
 
     # Group by employee
@@ -77,22 +80,45 @@ async def get_completion_data(cycle_id: Optional[str] = None, manager_id: Option
         eid = goal.ownerId
         if eid not in emp_map:
             emp_map[eid] = {
-                "employeeName": goal.owner.name,
+                "employeeName":  goal.owner.name,
                 "employeeEmail": goal.owner.email,
-                "department": goal.owner.department,
-                "totalGoals": 0,
-                "checkInsSubmitted": 0,
+                "department":    goal.owner.department,
+                "totalGoals":    0,
+                "q1": None, "q2": None, "q3": None, "q4": None,
+                "_q_achievements": {"Q1": [], "Q2": [], "Q3": [], "Q4": []},
             }
         emp_map[eid]["totalGoals"] += 1
-        emp_map[eid]["checkInsSubmitted"] += len(goal.checkIns)
+
+        for ci in goal.checkIns:
+            q = ci.quarterWindow.quarter if ci.quarterWindow else None
+            if q and q in emp_map[eid]["_q_achievements"]:
+                pct = ci.achievementPct
+                emp_map[eid]["_q_achievements"][q].append(pct if pct is not None else 0)
 
     result = []
     for emp in emp_map.values():
-        total = emp["totalGoals"]
-        submitted = emp["checkInsSubmitted"]
+        q_avgs = {}
+        all_vals = []
+        for q in ["Q1", "Q2", "Q3", "Q4"]:
+            vals = emp["_q_achievements"][q]
+            if vals:
+                avg = round(sum(vals) / len(vals), 1)
+                q_avgs[q.lower()] = avg
+                all_vals.extend(vals)
+            else:
+                q_avgs[q.lower()] = None
+
+        overall = round(sum(all_vals) / len(all_vals), 1) if all_vals else None
         result.append({
-            **emp,
-            "completionPct": round((submitted / total) * 100, 1) if total else 0,
+            "employeeName":  emp["employeeName"],
+            "employeeEmail": emp["employeeEmail"],
+            "department":    emp["department"],
+            "totalGoals":    emp["totalGoals"],
+            "q1":            q_avgs["q1"],
+            "q2":            q_avgs["q2"],
+            "q3":            q_avgs["q3"],
+            "q4":            q_avgs["q4"],
+            "overallPct":    overall,
         })
     return result
 

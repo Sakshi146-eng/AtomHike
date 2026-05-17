@@ -49,6 +49,10 @@ async def create_goal(data: GoalCreate, owner_id: str):
     if count >= 8:
         raise HTTPException(status_code=400, detail="Maximum 8 goals allowed per cycle")
 
+    # Per-goal minimum weightage (BRD rule — also re-validated at submit)
+    if data.weightage < 10:
+        raise HTTPException(status_code=400, detail="Each goal must have at least 10% weightage")
+
     goal = await db.goal.create(
         data={
             "cycleId": cycle.id,
@@ -120,7 +124,14 @@ async def delete_goal(goal_id: str, owner_id: str):
 
 
 async def submit_goals(owner_id: str):
-    """Submit ALL draft goals for manager approval."""
+    """
+    Submit ALL draft goals for manager approval.
+
+    BRD rules validated at submit time (NOT at draft creation):
+      • Total weightage of all goals == 100 %
+      • Each individual goal weightage >= 10 %
+      • Total number of goals <= 8
+    """
     cycle = await _get_active_cycle()
     await _assert_goal_setting_window(cycle)
 
@@ -130,8 +141,33 @@ async def submit_goals(owner_id: str):
     if not drafts:
         raise HTTPException(status_code=400, detail="No draft goals to submit")
 
-    total_weightage = sum(g.weightage for g in drafts)
+    # ── Rule 1: Max 8 goals ───────────────────────────────────────────────────
+    if len(drafts) > 8:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Maximum 8 goals allowed per cycle. You have {len(drafts)}.",
+        )
 
+    # ── Rule 2: Each goal must be ≥ 10 % ────────────────────────────────────
+    low_weight = [g.title for g in drafts if g.weightage < 10]
+    if low_weight:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Each goal must have at least 10% weightage. "
+                   f"The following goals are below 10%: {', '.join(low_weight)}",
+        )
+
+    # ── Rule 3: Total weightage must equal exactly 100 % ────────────────────
+    total_weightage = round(sum(g.weightage for g in drafts), 2)
+    if total_weightage != 100.0:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Total weightage must equal 100%. "
+                   f"Current total: {total_weightage}%. "
+                   f"Remaining: {round(100 - total_weightage, 2)}%.",
+        )
+
+    # ── All checks passed — submit ───────────────────────────────────────────
     await db.goal.update_many(
         where={"ownerId": owner_id, "cycleId": cycle.id, "status": "DRAFT"},
         data={"status": "PENDING_APPROVAL"},
@@ -148,10 +184,7 @@ async def submit_goals(owner_id: str):
             goal_id=goal.id,
         )
 
-    msg = f"{len(drafts)} goal(s) submitted for approval"
-    if round(total_weightage, 2) != 100.0:
-        msg += f" (note: total weightage is {total_weightage}%, not 100%)"
-    return {"message": msg}
+    return {"message": f"{len(drafts)} goal(s) submitted for manager approval"}
 
 
 # ─── Manager operations ────────────────────────────────────────────────────────

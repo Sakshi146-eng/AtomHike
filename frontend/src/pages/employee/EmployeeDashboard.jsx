@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Target, CheckSquare, Award, ArrowRight, AlertTriangle, XCircle, Pencil } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Target, CheckSquare, Award, ArrowRight, AlertTriangle, XCircle, Pencil, X } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import { useAuth } from "../../context/AuthContext";
 import { getMyGoals } from "../../api/goals";
 import { getActiveCycle } from "../../api/cycles";
 import { PageSkeleton } from "../../components/loaders/Skeletons";
 import StatusBadge from "../../components/common/StatusBadge";
+
+const DISMISSED_KEY = "pms_dismissed_rejections";
+const getDismissed  = () => JSON.parse(localStorage.getItem(DISMISSED_KEY) || "[]");
+const dismissGoal   = (id) => {
+  const list = getDismissed();
+  if (!list.includes(id)) {
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...list, id]));
+  }
+};
 
 const COLORS = ["#4f46e5", "#10b981", "#f59e0b", "#ef4444", "#0ea5e9"];
 
@@ -27,9 +36,15 @@ function StatCard({ icon: Icon, label, value, sub, color, delay }) {
 
 export default function EmployeeDashboard() {
   const { user } = useAuth();
-  const [goals, setGoals]     = useState([]);
-  const [cycle, setCycle]     = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [goals,     setGoals]     = useState([]);
+  const [cycle,     setCycle]     = useState(null);
+  const [loading,   setLoading]   = useState(true);
+  const [dismissed, setDismissed] = useState(getDismissed);
+
+  const handleDismiss = (id) => {
+    dismissGoal(id);
+    setDismissed(getDismissed());
+  };
 
   useEffect(() => {
     Promise.all([getMyGoals(), getActiveCycle().catch(() => ({ data: null }))])
@@ -70,29 +85,37 @@ export default function EmployeeDashboard() {
         </Link>
       </div>
 
-      {/* ── REJECTED GOALS NOTIFICATIONS ── */}
-      {rejected.length > 0 && (
-        <div className="space-y-2">
-          {rejected.map(goal => (
-            <motion.div key={goal.id}
-              initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
-              className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl"
-            >
+      {/* ── REJECTED GOALS NOTIFICATIONS (dismissible) ── */}
+      <AnimatePresence>
+        {rejected.filter(g => !dismissed.includes(g.id)).map(goal => (
+          <motion.div key={goal.id}
+            initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }} transition={{ duration: 0.2 }}
+            className="overflow-hidden"
+          >
+            <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
               <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-red-800">Goal Rejected: {goal.title}</p>
+                <p className="text-sm font-semibold text-red-800">⚠ Goal Rejected: <span className="italic">{goal.title}</span></p>
                 {goal.rejectionReason && (
-                  <p className="text-xs text-red-600 mt-0.5">Manager's note: {goal.rejectionReason}</p>
+                  <p className="text-xs text-red-600 mt-0.5 leading-relaxed">↩ {goal.rejectionReason}</p>
                 )}
-                <p className="text-xs text-red-400 mt-1">Please edit and resubmit for approval.</p>
               </div>
-              <Link to="/employee/goals" className="btn-secondary text-xs py-1.5 shrink-0 border-red-200 text-red-700 hover:bg-red-100">
-                <Pencil className="w-3 h-3" /> Edit & Resubmit
-              </Link>
-            </motion.div>
-          ))}
-        </div>
-      )}
+              <div className="flex items-center gap-2 shrink-0">
+                <Link to="/employee/goals"
+                  className="btn-secondary text-xs py-1.5 border-red-200 text-red-700 hover:bg-red-100">
+                  <Pencil className="w-3 h-3" /> Go to Goals
+                </Link>
+                <button onClick={() => handleDismiss(goal.id)}
+                  title="Dismiss"
+                  className="p-1.5 rounded-lg text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+      </AnimatePresence>
 
       {/* Draft weightage warning */}
       {draft > 0 && (

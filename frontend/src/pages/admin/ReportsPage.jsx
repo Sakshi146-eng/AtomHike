@@ -24,7 +24,12 @@ export default function ReportsPage() {
   const [exporting,  setExporting] = useState(false);
 
   useEffect(() => {
-    listCycles().then(r => { setCycles(r.data); if (r.data[0]) setCycleId(r.data[0].id); });
+    listCycles().then(r => {
+      setCycles(r.data);
+      // Prefer the active cycle; fall back to newest
+      const active = r.data.find(c => c.isActive);
+      setCycleId(active?.id || r.data[0]?.id || "");
+    });
   }, []);
 
   useEffect(() => {
@@ -39,6 +44,7 @@ export default function ReportsPage() {
     }).catch(() => toast.error("Failed to load reports"))
       .finally(() => setLoading(false));
   }, [cycleId]);
+
 
   const handleExport = async (type, format) => {
     setExporting(true);

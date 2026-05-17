@@ -34,7 +34,7 @@ export default function AuditTrailPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const r = await getAuditTrail({ limit: 200 });
+      const r = await getAuditTrail({ take: 200 });
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       setLogs(data);
     } catch { toast.error("Failed to load audit trail"); }
