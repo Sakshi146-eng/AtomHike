@@ -1,0 +1,250 @@
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "asyncio"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────
+
+enum Role {
+  EMPLOYEE
+  MANAGER
+  ADMIN
+}
+
+enum UoMType {
+  MIN        // Higher is better  (Sales, Revenue)
+  MAX        // Lower is better   (TAT, Cost, Bugs)
+  TIMELINE   // Date-based completion
+  ZERO_BASED // Zero = success    (Safety incidents)
+}
+
+enum GoalStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  LOCKED
+}
+
+enum Quarter {
+  Q1
+  Q2
+  Q3
+  Q4
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  ON_TRACK
+  COMPLETED
+  DELAYED
+}
+
+// ─────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         Role
+  managerId    String?
+  manager      User?    @relation("UserHierarchy", fields: [managerId], references: [id])
+  subordinates User[]   @relation("UserHierarchy")
+  department   String?
+  employeeCode String?  @unique
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  goals            Goal[]          @relation("GoalOwner")
+  checkIns         CheckIn[]       @relation("CheckInSubmitter")
+  reviewedCheckIns CheckIn[]       @relation("CheckInReviewer")
+  comments         Comment[]
+  auditLogs        AuditLog[]
+  assignedLinks    SharedGoalLink[] @relation("SharedGoalAssigner")
+  createdCycles    Cycle[]         @relation("CycleCreator")
+  lockedGoals      Goal[]          @relation("GoalLocker")
+  unlockedGoals    Goal[]          @relation("GoalUnlocker")
+}
+
+// ─────────────────────────────────────────────
+// THRUST AREA (BRD: employees select when creating goals)
+// ─────────────────────────────────────────────
+
+model ThrustArea {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  goals Goal[]
+}
+
+// ─────────────────────────────────────────────
+// CYCLE (Annual performance year container)
+// ─────────────────────────────────────────────
+
+model Cycle {
+  id               String   @id @default(cuid())
+  name             String
+  year             Int
+  goalSettingStart DateTime
+  goalSettingEnd   DateTime
+  isActive         Boolean  @default(false)
+  createdById      String
+  createdBy        User     @relation("CycleCreator", fields: [createdById], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  quarterWindows QuarterWindow[]
+  goals          Goal[]
+}
+
+// ─────────────────────────────────────────────
+// QUARTER WINDOW (Enforces check-in periods)
+// ─────────────────────────────────────────────
+
+model QuarterWindow {
+  id          String   @id @default(cuid())
+  cycleId     String
+  cycle       Cycle    @relation(fields: [cycleId], references: [id])
+  quarter     Quarter
+  label       String   // e.g. "Q1 Check-in — July 2025"
+  windowOpen  DateTime
+  windowClose DateTime
+  isActive    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  checkIns CheckIn[]
+
+  @@unique([cycleId, quarter])
+}
+
+// ─────────────────────────────────────────────
+// GOAL (Core entity)
+// ─────────────────────────────────────────────
+
+model Goal {
+  id              String     @id @default(cuid())
+  cycleId         String
+  cycle           Cycle      @relation(fields: [cycleId], references: [id])
+  ownerId         String
+  owner           User       @relation("GoalOwner", fields: [ownerId], references: [id])
+  thrustAreaId    String
+  thrustArea      ThrustArea @relation(fields: [thrustAreaId], references: [id])
+  title           String
+  description     String?
+  uomType         UoMType
+  targetValue     Float?
+  targetDate      DateTime?
+  weightage       Float
+  status          GoalStatus @default(DRAFT)
+  isShared        Boolean    @default(false)
+  rejectionReason String?
+  lockedAt        DateTime?
+  lockedById      String?
+  lockedBy        User?      @relation("GoalLocker", fields: [lockedById], references: [id])
+  unlockedById    String?
+  unlockedBy      User?      @relation("GoalUnlocker", fields: [unlockedById], references: [id])
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  checkIns      CheckIn[]
+  comments      Comment[]
+  auditLogs     AuditLog[]
+  masterLinks   SharedGoalLink[] @relation("MasterGoal")
+  employeeLinks SharedGoalLink[] @relation("EmployeeGoal")
+}
+
+// ─────────────────────────────────────────────
+// SHARED GOAL LINK (1 master → many employee copies)
+// ─────────────────────────────────────────────
+
+model SharedGoalLink {
+  id             String   @id @default(cuid())
+  masterGoalId   String
+  masterGoal     Goal     @relation("MasterGoal", fields: [masterGoalId], references: [id])
+  employeeGoalId String   @unique
+  employeeGoal   Goal     @relation("EmployeeGoal", fields: [employeeGoalId], references: [id])
+  assignedById   String
+  assignedBy     User     @relation("SharedGoalAssigner", fields: [assignedById], references: [id])
+  assignedAt     DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// CHECK-IN (Quarterly achievement log)
+// ─────────────────────────────────────────────
+
+model CheckIn {
+  id              String         @id @default(cuid())
+  goalId          String
+  goal            Goal           @relation(fields: [goalId], references: [id])
+  quarterWindowId String
+  quarterWindow   QuarterWindow  @relation(fields: [quarterWindowId], references: [id])
+  actualValue     Float?
+  actualDate      DateTime?
+  progressStatus  ProgressStatus
+  achievementPct  Float?         // Computed by UoM engine, stored for perf
+  submittedById   String
+  submittedBy     User           @relation("CheckInSubmitter", fields: [submittedById], references: [id])
+  reviewedById    String?
+  reviewedBy      User?          @relation("CheckInReviewer", fields: [reviewedById], references: [id])
+  reviewedAt      DateTime?
+  submittedAt     DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  comments Comment[]
+
+  @@unique([goalId, quarterWindowId])
+}
+
+// ─────────────────────────────────────────────
+// COMMENT (Manager feedback / discussion)
+// ─────────────────────────────────────────────
+
+model Comment {
+  id         String   @id @default(cuid())
+  goalId     String?
+  goal       Goal?    @relation(fields: [goalId], references: [id])
+  checkInId  String?
+  checkIn    CheckIn? @relation(fields: [checkInId], references: [id])
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  content    String
+  createdAt  DateTime @default(now())
+}
+
+// ─────────────────────────────────────────────
+// AUDIT LOG (BRD mandatory — who changed what, when)
+// ─────────────────────────────────────────────
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String   // "Goal" | "CheckIn" | "User" | "Cycle"
+  entityId   String
+  action     String   // "GOAL_CREATED" | "GOAL_APPROVED" | "WEIGHTAGE_UPDATED" etc.
+  actorId    String
+  actor      User     @relation(fields: [actorId], references: [id])
+  goalId     String?
+  goal       Goal?    @relation(fields: [goalId], references: [id])
+  oldValue   Json?
+  newValue   Json?
+  ipAddress  String?
+  timestamp  DateTime @default(now())
+
+  @@index([entityId])
+  @@index([timestamp])
+  @@index([actorId])
+}
