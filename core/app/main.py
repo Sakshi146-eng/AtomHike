@@ -14,7 +14,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AtomQuest — Goal Setting & Tracking Portal",
+    title="AtomHike — Goal Setting & Tracking Portal",
     description="""
 ## Performance Management System API
 
@@ -49,8 +49,8 @@ Use `POST /auth/login` to get your token, then click **Authorize** above.
     docs_url="/docs",
     redoc_url="/redoc",
     contact={
-        "name": "AtomQuest PMS",
-        "email": "admin@atomquest.dev",
+        "name": "AtomHike PMS",
+        "email": "admin@atomhike.dev",
     },
     license_info={
         "name": "Private",
