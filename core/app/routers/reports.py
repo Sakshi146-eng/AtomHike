@@ -172,3 +172,58 @@ async def debug_report_state(admin=Depends(require_role(Role.ADMIN))):
             "hint":                hint,
         },
     }
+
+
+# ─── Audit Live Test ──────────────────────────────────────────────────────────
+
+@router.get("/audit-test", summary="Directly tests audit log writing — returns exact error if broken (Admin only)")
+async def test_audit_logging(admin=Depends(require_role(Role.ADMIN))):
+    """
+    Bypasses the audit_service wrapper and directly calls db.auditlog.create().
+    Returns the EXACT Prisma exception if it fails — no silent swallowing.
+    Call GET /reports/audit-test then check what you get back.
+    """
+    import traceback as tb
+
+    # ── Test 1: without optional fields ──────────────────────────────────────
+    try:
+        entry = await db.auditlog.create(data={
+            "entityType": "AuditTest",
+            "entityId":   "diagnostic-bare",
+            "action":     "AUDIT_TEST",
+            "actorId":    admin.id,
+        })
+        bare_ok = True
+        bare_err = None
+    except Exception as exc:
+        entry = None
+        bare_ok = False
+        bare_err = f"{type(exc).__name__}: {exc}\n{tb.format_exc()}"
+
+    # ── Test 2: with oldValue / newValue Json fields ───────────────────────
+    try:
+        entry2 = await db.auditlog.create(data={
+            "entityType": "AuditTest",
+            "entityId":   "diagnostic-full",
+            "action":     "AUDIT_TEST",
+            "actorId":    admin.id,
+            "oldValue":   {"status": "TEST_OLD"},
+            "newValue":   {"status": "TEST_NEW"},
+        })
+        full_ok = True
+        full_err = None
+    except Exception as exc:
+        entry2 = None
+        full_ok = False
+        full_err = f"{type(exc).__name__}: {exc}\n{tb.format_exc()}"
+
+    return {
+        "actorId": admin.id,
+        "test_bare": {"ok": bare_ok, "id": entry.id if entry else None,  "error": bare_err},
+        "test_full": {"ok": full_ok, "id": entry2.id if entry2 else None, "error": full_err},
+        "conclusion": (
+            "✅ Both tests passed — audit_service should be working"
+            if bare_ok and full_ok
+            else "❌ Audit logging is broken — see error above for exact fix needed"
+        ),
+    }
