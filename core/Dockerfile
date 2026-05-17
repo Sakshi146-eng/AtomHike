@@ -21,4 +21,4 @@ RUN prisma generate
 EXPOSE 8000
 
 # Push schema to DB then start server
-CMD ["sh", "-c", "prisma db push && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "prisma db push && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

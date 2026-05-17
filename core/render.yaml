@@ -1,15 +1,10 @@
 services:
   - type: web
     name: atomhike-backend
-    runtime: python
+    runtime: docker
     plan: free
 
-    buildCommand: |
-      pip install -r requirements.txt
-      prisma generate
-
-    startCommand: |
-      prisma db push --skip-generate && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # No buildCommand/startCommand — Dockerfile handles everything
 
     healthCheckPath: /health
 
