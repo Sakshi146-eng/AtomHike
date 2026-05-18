@@ -87,9 +87,9 @@ export default function GoalCard({ goal, onEdit, onDelete, index = 0 }) {
           <button onClick={() => onEdit?.(goal)} className="btn-secondary text-[11px] py-1.5 flex-1 justify-center">
             <Pencil className="w-3.5 h-3.5" /> Edit
           </button>
-          <button onClick={() => onDelete?.(goal)} className="btn-secondary border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 text-[11px] py-1.5 flex-1 justify-center">
+          {/* <button onClick={() => onDelete?.(goal)} className="btn-secondary border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300 text-[11px] py-1.5 flex-1 justify-center">
             <Trash2 className="w-3.5 h-3.5" /> Delete
-          </button>
+          </button> */}
         </div>
       )}
     </motion.div>
