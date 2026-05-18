@@ -1,35 +1,47 @@
 import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Download, Search, RefreshCw } from "lucide-react";
+import { Download, Search, RefreshCw, ChevronLeft, ChevronRight, ShieldAlert, User } from "lucide-react";
 import toast from "react-hot-toast";
 import { getAuditTrail, exportAudit } from "../../api/reports";
 import { TableSkeleton, Spinner } from "../../components/loaders/Skeletons";
-import { fmtDateTime } from "../../utils/dateHelpers";
-import { downloadBlob } from "../../utils/dateHelpers";
-
-const ACTION_COLORS = {
-  GOAL_CREATED:   "bg-emerald-50 text-emerald-700",
-  GOAL_APPROVED:  "bg-indigo-50 text-indigo-700",
-  GOAL_REJECTED:  "bg-red-50 text-red-600",
-  GOAL_SUBMITTED: "bg-amber-50 text-amber-700",
-  GOAL_UPDATED:   "bg-sky-50 text-sky-700",
-  GOAL_DELETED:   "bg-red-50 text-red-600",
-  GOAL_UNLOCKED:  "bg-violet-50 text-violet-700",
-  CHECKIN_SUBMITTED: "bg-teal-50 text-teal-700",
-  CHECKIN_UPDATED:   "bg-sky-50 text-sky-700",
-  USER_UPDATED:   "bg-slate-100 text-slate-700",
-};
+import { fmtDateTime, downloadBlob } from "../../utils/dateHelpers";
 
 const ENTITY_TYPES = ["ALL", "Goal", "CheckIn", "User", "Cycle"];
 
+const getActionVisuals = (action) => {
+  const act = action?.toUpperCase() || "";
+  if (act.includes("CREATED") || act.includes("SUBMITTED")) {
+    return {
+      class: "bg-accent-light text-accent border border-accent/15",
+      isCritical: false,
+    };
+  }
+  if (act.includes("APPROVED")) {
+    return {
+      class: "bg-status-success-light text-status-success border border-status-success/15",
+      isCritical: false,
+    };
+  }
+  if (act.includes("REJECTED") || act.includes("DELETED")) {
+    return {
+      class: "bg-status-danger-light text-status-danger border border-status-danger/15",
+      isCritical: true,
+    };
+  }
+  return {
+    class: "bg-primary-tint text-primary border border-primary-tint",
+    isCritical: false,
+  };
+};
+
 export default function AuditTrailPage() {
-  const [logs,       setLogs]      = useState([]);
-  const [loading,    setLoading]   = useState(true);
-  const [exporting,  setExporting] = useState(false);
-  const [search,     setSearch]    = useState("");
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [search, setSearch] = useState("");
   const [entityFilter, setEntityFilter] = useState("ALL");
-  const [page,       setPage]      = useState(1);
-  const PER_PAGE = 20;
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 15;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,107 +49,205 @@ export default function AuditTrailPage() {
       const r = await getAuditTrail({ take: 200 });
       const data = Array.isArray(r.data) ? r.data : r.data?.items || [];
       setLogs(data);
-    } catch { toast.error("Failed to load audit trail"); }
-    finally { setLoading(false); }
+    } catch (err) {
+      toast.error("Failed to load security log trail");
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const filtered = logs
-    .filter(l => entityFilter === "ALL" || l.entityType === entityFilter)
-    .filter(l => !search || l.action?.toLowerCase().includes(search.toLowerCase())
-      || l.entityType?.toLowerCase().includes(search.toLowerCase()));
+    .filter((l) => entityFilter === "ALL" || l.entityType === entityFilter)
+    .filter(
+      (l) =>
+        !search ||
+        l.action?.toLowerCase().includes(search.toLowerCase()) ||
+        l.entityType?.toLowerCase().includes(search.toLowerCase()) ||
+        l.actor?.name?.toLowerCase().includes(search.toLowerCase())
+    );
 
   const totalPages = Math.ceil(filtered.length / PER_PAGE);
-  const paginated  = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const paginated = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   const handleExport = async () => {
     setExporting(true);
     try {
       const r = await exportAudit("csv");
       downloadBlob(r.data, "audit_trail.csv");
-      toast.success("Audit trail exported");
-    } catch { toast.error("Export failed"); }
-    finally { setExporting(false); }
+      toast.success("Security log exported as CSV");
+    } catch {
+      toast.error("Export process failed");
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800">Audit Trail</h2>
-          <p className="text-sm text-slate-500">{logs.length} total actions logged</p>
+          <h1 className="text-2xl font-bold text-ink-primary font-display">Audit Trail</h1>
+          <p className="text-sm text-ink-secondary mt-0.5">
+            Security logs, user actions, system modifications, and access traces.
+          </p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={load} className="btn-ghost py-2"><RefreshCw className="w-4 h-4" /></button>
-          <button disabled={exporting} onClick={handleExport} className="btn-secondary text-sm">
-            {exporting ? <Spinner size="sm" /> : <Download className="w-4 h-4" />} Export CSV
+        <div className="flex items-center gap-2 self-start md:self-center">
+          <button
+            onClick={load}
+            title="Refresh Log Feed"
+            className="p-2 rounded-lg border border-surface-border bg-white text-ink-secondary hover:bg-slate-50 transition-colors"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
+          <button
+            disabled={exporting || logs.length === 0}
+            onClick={handleExport}
+            className="btn-outline border-surface-border text-xs py-2 px-3.5 flex items-center gap-1.5 hover:bg-slate-50"
+          >
+            {exporting ? <Spinner /> : <Download className="w-4 h-4 text-ink-secondary" />} Export CSV
           </button>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className="input pl-9 max-w-xs" placeholder="Search actions…"
-            value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+      {/* Filters Bar */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="relative w-full md:max-w-xs">
+          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-secondary" />
+          <input
+            className="input pl-9 text-[14px]"
+            placeholder="Search logs by action or actor…"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+          />
         </div>
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
-          {ENTITY_TYPES.map(e => (
-            <button key={e} onClick={() => { setEntityFilter(e); setPage(1); }}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
-                ${entityFilter === e ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"}`}>
-              {e}
+
+        {/* Tab-styled Entity filters */}
+        <div className="flex gap-1 p-1 bg-primary-tint/35 border border-primary-tint/20 rounded-xl w-fit self-start md:self-center">
+          {ENTITY_TYPES.map((e) => (
+            <button
+              key={e}
+              onClick={() => {
+                setEntityFilter(e);
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold font-sans transition-all ${entityFilter === e
+                ? "bg-white shadow text-ink-primary"
+                : "text-ink-secondary hover:text-ink-primary"
+                }`}
+            >
+              {e === "ALL" ? "All Logs" : e}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Table */}
-      {loading ? <TableSkeleton rows={8} /> : (
+      {/* Logs Table */}
+      {loading ? (
+        <TableSkeleton rows={8} />
+      ) : (
         <>
-          <div className="card overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 border-b border-slate-200">
-                <tr>
-                  {["Timestamp", "Action", "Entity", "Entity ID", "Actor"].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {paginated.length === 0 ? (
-                  <tr><td colSpan={5} className="px-4 py-12 text-center text-slate-400 text-sm">No matching audit records</td></tr>
-                ) : paginated.map((log, i) => (
-                  <motion.tr key={log.id || i} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-                    className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-3 text-xs text-slate-400 whitespace-nowrap">{fmtDateTime(log.timestamp)}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded text-xs font-medium ${ACTION_COLORS[log.action] || "bg-slate-100 text-slate-600"}`}>
-                        {log.action}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{log.entityType}</td>
-                    <td className="px-4 py-3 text-xs font-mono text-slate-400">{log.entityId?.slice(0, 12)}…</td>
-                    <td className="px-4 py-3 text-xs text-slate-600">{log.actor?.name || log.actorId?.slice(0, 8) || "—"}</td>
-                  </motion.tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <div className="card overflow-hidden bg-white">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="bg-[#F4F4FA] border-b border-surface-border">
+                    {["Timestamp", "Action Logged", "Entity Type", "Identifier", "Actor Details", "IP Address"].map((h) => (
+                      <th key={h} className="px-5 py-3 text-[11px] font-sans font-semibold text-ink-secondary uppercase tracking-wide">
+                        {h}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-border">
+                  {paginated.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-12 text-center text-ink-secondary text-xs">
+                        No security audit logs match the filter criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    paginated.map((log, i) => {
+                      const visuals = getActionVisuals(log.action);
+                      const rowStyle = visuals.isCritical
+                        ? "bg-status-danger-light/20 hover:bg-status-danger-light/35 border-l-2 border-status-danger"
+                        : "hover:bg-[#F0F2FF] transition-colors";
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500">Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length}</p>
-              <div className="flex gap-1">
-                <button disabled={page === 1} onClick={() => setPage(p => p - 1)} className="btn-secondary text-xs py-1.5 px-3 disabled:opacity-40">← Prev</button>
-                <button disabled={page === totalPages} onClick={() => setPage(p => p + 1)} className="btn-secondary text-xs py-1.5 px-3 disabled:opacity-40">Next →</button>
-              </div>
+                      const actorName = log.actor?.name || log.actorId?.slice(0, 8) || "System Machine";
+                      const ipStr = log.ipAddress || "127.0.0.1";
+
+                      return (
+                        <motion.tr
+                          key={log.id || i}
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ delay: i * 0.015 }}
+                          className={rowStyle}
+                        >
+                          <td className="px-5 py-3.5 text-[11px] font-mono text-ink-secondary whitespace-nowrap">
+                            {fmtDateTime(log.timestamp)}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold uppercase ${visuals.class}`}>
+                              {log.action}
+                            </span>
+                          </td>
+                          <td className="px-5 py-3.5 text-xs text-ink-primary font-medium">{log.entityType}</td>
+                          <td className="px-5 py-3.5 text-xs font-mono text-ink-secondary" title={log.entityId}>
+                            {log.entityId ? `${log.entityId.slice(0, 10)}…` : "—"}
+                          </td>
+                          <td className="px-5 py-3.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-6 h-6 rounded-full bg-primary-tint text-primary flex items-center justify-center shrink-0">
+                                <User className="w-3.5 h-3.5" />
+                              </div>
+                              <span className="text-xs text-ink-primary font-medium truncate max-w-[150px]" title={actorName}>
+                                {actorName}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-3.5 text-[11px] font-mono text-ink-secondary">{ipStr}</td>
+                        </motion.tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
-          )}
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-5 py-4 border-t border-surface-border bg-white">
+                <p className="text-[13px] font-mono text-ink-secondary">
+                  Showing {(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} of {filtered.length} logs
+                </p>
+                <div className="flex gap-1">
+                  <button
+                    disabled={page === 1}
+                    onClick={() => setPage((p) => p - 1)}
+                    className="btn-outline border-primary hover:bg-primary-tint/30 text-xs py-1.5 px-3 disabled:opacity-40"
+                  >
+                    <ChevronLeft className="w-4 h-4" /> Prev
+                  </button>
+                  <button
+                    disabled={page === totalPages}
+                    onClick={() => setPage((p) => p + 1)}
+                    className="btn-outline border-primary hover:bg-primary-tint/30 text-xs py-1.5 px-3 disabled:opacity-40"
+                  >
+                    Next <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </>
       )}
     </div>

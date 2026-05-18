@@ -1,221 +1,390 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Users, Target, Calendar, FileBarChart, Shield, Unlock } from "lucide-react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
+import {
+  Users, Target, Calendar, FileBarChart, Shield, Unlock,
+  Activity, ArrowRight, CheckCircle, Clock
+} from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend
+} from "recharts";
 import toast from "react-hot-toast";
-import { listUsers } from "../../api/users";
-import { listCycles, getActiveCycle } from "../../api/cycles";
+import { listUsers, updateUser } from "../../api/users";
+import { listCycles } from "../../api/cycles";
 import { getAllGoals, unlockGoal } from "../../api/goals";
 import { getAuditTrail } from "../../api/reports";
 import { PageSkeleton, Spinner } from "../../components/loaders/Skeletons";
 import StatusBadge from "../../components/common/StatusBadge";
-import { fmtDateTime } from "../../utils/dateHelpers";
-
-const COLORS = ["#4f46e5", "#10b981", "#f59e0b", "#0ea5e9", "#ef4444"];
+import { fmtDateTime, fmtDate } from "../../utils/dateHelpers";
 
 export default function AdminDashboard() {
-  const [users,  setUsers]  = useState([]);
-  const [cycle,  setCycle]  = useState(null);
-  const [goals,  setGoals]  = useState([]);
-  const [audit,  setAudit]  = useState([]);
+  const [users, setUsers] = useState([]);
+  const [cycles, setCycles] = useState([]);
+  const [goals, setGoals] = useState([]);
+  const [audit, setAudit] = useState([]);
   const [loading, setLoading] = useState(true);
   const [unlocking, setUnlocking] = useState({});
-  const [goalsFilter, setGoalsFilter] = useState("ALL");
 
   const load = () =>
     Promise.all([
       listUsers(),
-      getActiveCycle().catch(() => ({ data: null })),
+      listCycles().catch(() => ({ data: [] })),
       getAllGoals().catch(() => ({ data: [] })),
       getAuditTrail({ take: 8 }).catch(() => ({ data: [] })),
-    ]).then(([ur, cr, gr, ar]) => {
-      setUsers(ur.data);
-      setCycle(cr.data);
-      setGoals(Array.isArray(gr.data) ? gr.data : []);
-      setAudit(Array.isArray(ar.data) ? ar.data : ar.data?.items || []);
-    }).finally(() => setLoading(false));
+    ])
+      .then(([ur, cr, gr, ar]) => {
+        setUsers(ur.data || []);
+        setCycles(cr.data || []);
+        setGoals(Array.isArray(gr.data) ? gr.data : []);
+        setAudit(Array.isArray(ar.data) ? ar.data : ar.data?.items || []);
+      })
+      .catch(() => toast.error("Failed to sync system data"))
+      .finally(() => setLoading(false));
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   if (loading) return <PageSkeleton />;
 
-  const employees = users.filter(u => u.role === "EMPLOYEE").length;
-  const managers  = users.filter(u => u.role === "MANAGER").length;
+  // Metric computations
+  const totalUsers = users.length;
+  const activeEmployees = users.filter((u) => u.role === "EMPLOYEE" && u.isActive).length;
+  const goalsThisCycle = goals.length;
+  const pendingApprovals = goals.filter((g) => g.status === "PENDING_APPROVAL").length;
+  const systemStatus = "Operational";
 
-  const roleData = [
-    { name: "Employees", value: employees },
-    { name: "Managers",  value: managers  },
-    { name: "Admins",    value: users.filter(u => u.role === "ADMIN").length },
-  ];
+  const activeCycle = cycles.find((c) => c.isActive) || cycles[0];
 
-  const STATUS_FILTERS = ["ALL", "DRAFT", "PENDING_APPROVAL", "LOCKED", "REJECTED"];
-  const filteredGoals = goalsFilter === "ALL" ? goals : goals.filter(g => g.status === goalsFilter);
+  // 1. Chart: Goals Created Over Time (Calculated dynamically from live backend goals)
+  const getGoalsCreatedOverTime = () => {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const now = new Date();
+    const last6Months = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      last6Months.push({
+        year: d.getFullYear(),
+        monthIndex: d.getMonth(),
+        monthLabel: months[d.getMonth()],
+        Count: 0
+      });
+    }
+    goals.forEach(g => {
+      if (!g.createdAt) return;
+      const created = new Date(g.createdAt);
+      last6Months.forEach(m => {
+        if (created.getFullYear() === m.year && created.getMonth() === m.monthIndex) {
+          m.Count++;
+        }
+      });
+    });
+    let cumulative = 0;
+    return last6Months.map(m => {
+      cumulative += m.Count;
+      return {
+        month: m.monthLabel,
+        Count: cumulative
+      };
+    });
+  };
+  const lineData = getGoalsCreatedOverTime();
 
-  const handleUnlock = async (goalId) => {
-    setUnlocking(u => ({ ...u, [goalId]: true }));
+  // 2. Chart: Goal Status Distribution (Completely live values)
+  const approvedCount = goals.filter((g) => g.status === "APPROVED").length;
+  const pendingCount = pendingApprovals;
+  const draftCount = goals.filter((g) => g.status === "DRAFT").length;
+  const rejectedCount = goals.filter((g) => g.status === "REJECTED").length;
+  const lockedCount = goals.filter((g) => g.status === "LOCKED").length;
+
+  const donutData = [
+    { name: "Approved", value: approvedCount, color: "#16A34A" },
+    { name: "Pending Approval", value: pendingCount, color: "#3B82F6" },
+    { name: "Draft", value: draftCount, color: "#3D3D5C" },
+    { name: "Rejected", value: rejectedCount, color: "#DC2626" },
+    { name: "Locked", value: lockedCount, color: "#1C1C2E" },
+  ].filter((d) => d.value > 0);
+
+  // 3. User toggle status handler
+  const handleToggleActive = async (user) => {
     try {
-      await unlockGoal(goalId);
-      toast.success("Goal unlocked — employee can now edit");
-      load();
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Unlock failed");
-    } finally {
-      setUnlocking(u => ({ ...u, [goalId]: false }));
+      await updateUser(user.id, { isActive: !user.isActive });
+      toast.success(`${user.name} is now ${!user.isActive ? "Active" : "Inactive"}`);
+      setUsers((prev) =>
+        prev.map((u) => (u.id === user.id ? { ...u, isActive: !user.isActive } : u))
+      );
+    } catch {
+      toast.error("Failed to update status");
     }
   };
 
-  const QUICK_LINKS = [
-    { to: "/admin/users",        icon: Users,       label: "Users",        count: `${users.length} total`,  color: "bg-brand-50 text-brand-700 border-brand-200"  },
-    { to: "/admin/cycles",       icon: Calendar,    label: "Cycles",       count: cycle?.name || "None",    color: "bg-emerald-50 text-emerald-700 border-emerald-200" },
-    { to: "/admin/thrust-areas", icon: Shield,      label: "Thrust Areas", count: "Manage",                color: "bg-violet-50 text-violet-700 border-violet-200" },
-    { to: "/admin/reports",      icon: FileBarChart,label: "Reports",      count: "Export Data",           color: "bg-amber-50 text-amber-700 border-amber-200"  },
-  ];
+  // 4. Upcoming cycles with countdown helper
+  const getDaysRemaining = (endDateStr) => {
+    const end = new Date(endDateStr);
+    const today = new Date();
+    const diff = end - today;
+    return Math.ceil(diff / (1000 * 60 * 60 * 24));
+  };
+
+  const getCountdownBadge = (days) => {
+    if (days < 0) return { label: "Expired", class: "bg-slate-100 text-slate-500" };
+    if (days <= 7) return { label: `${days}d left`, class: "bg-status-danger-light text-status-danger" };
+    if (days <= 30) return { label: `${days}d left`, class: "bg-status-warning-light text-status-warning" };
+    return { label: `${days}d left`, class: "bg-status-success-light text-status-success" };
+  };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-bold text-slate-800">Admin Overview</h2>
-        <p className="text-sm text-slate-500">
-          {cycle ? `Active Cycle: ${cycle.name}` : "No active cycle"} · {users.length} total users · {goals.length} goals
-        </p>
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-ink-primary font-display">System Overview</h1>
+          <p className="text-sm text-ink-secondary mt-0.5">
+            AtomQuest administration metrics, real-time activity indicators, and global configs.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 bg-primary-tint/30 border border-primary-tint px-3 py-1.5 rounded-lg text-xs font-sans text-primary">
+          <span className="font-semibold">Active Cycle:</span>
+          <span>{activeCycle ? activeCycle.name : "None configured"}</span>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 5 Stats Cards Row */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { icon: Users,    label: "Total Users",  value: users.length,  color: "bg-brand-600"   },
-          { icon: Users,    label: "Employees",    value: employees,     color: "bg-sky-500"     },
-          { icon: Target,   label: "Total Goals",  value: goals.length,  color: "bg-violet-500"  },
-          { icon: Calendar, label: "Active Cycle", value: cycle ? "✓" : "None", color: cycle ? "bg-emerald-500" : "bg-slate-400" },
-        ].map(({ icon: Icon, label, value, color }, i) => (
-          <motion.div key={i} initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08 }}
-            className="card p-5">
-            <div className={`w-9 h-9 rounded-lg ${color} flex items-center justify-center mb-3`}>
-              <Icon className="w-4 h-4 text-white" />
+          { label: "Total Users", value: totalUsers, icon: Users, accent: "text-accent" },
+          { label: "Active Employees", value: activeEmployees, icon: Users, accent: "text-accent" },
+          { label: "Goals This Cycle", value: goalsThisCycle, icon: Target, accent: "text-accent" },
+          { label: "Pending Approvals", value: pendingApprovals, icon: Clock, accent: "text-status-warning" },
+        ].map((stat, i) => (
+          <motion.div
+            key={i}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: i * 0.05 }}
+            className="card p-5"
+          >
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-sans font-medium text-ink-secondary uppercase tracking-wider">{stat.label}</span>
+              <stat.icon className={`w-4 h-4 ${stat.accent}`} />
             </div>
-            <p className="text-2xl font-bold text-slate-800">{value}</p>
-            <p className="text-sm text-slate-500">{label}</p>
+            <div className={`text-2xl font-bold font-mono ${stat.accent}`}>{stat.value}</div>
           </motion.div>
         ))}
+
+        {/* 5th stat: System Status */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="card p-5"
+        >
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-sans font-medium text-ink-secondary uppercase tracking-wider">System Status</span>
+            <Activity className="w-4 h-4 text-status-success animate-pulse" />
+          </div>
+          <div className="flex items-center mt-1">
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-status-success-light text-status-success border border-status-success/10">
+              {systemStatus}
+            </span>
+          </div>
+        </motion.div>
       </div>
 
-      {/* Charts + Quick links */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      {/* Two charts side by side */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Line chart "Goals Created Over Time" */}
         <div className="card p-5">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">User Roles</h3>
-          <ResponsiveContainer width="100%" height={160}>
-            <PieChart>
-              <Pie data={roleData} cx="50%" cy="50%" outerRadius={65} dataKey="value" paddingAngle={3}>
-                {roleData.map((_, i) => <Cell key={i} fill={COLORS[i]} />)}
-              </Pie>
-              <Tooltip />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="flex flex-wrap gap-3 justify-center mt-1">
-            {roleData.map((d, i) => (
-              <span key={i} className="flex items-center gap-1.5 text-xs text-slate-600">
-                <span className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i] }} />
-                {d.name} ({d.value})
-              </span>
-            ))}
+          <h3 className="text-[15px] font-bold text-ink-primary font-sans mb-4 flex items-center justify-between">
+            <span>Goals Created Over Time</span>
+            <span className="text-[11px] font-normal text-ink-secondary font-mono">Last 6 Months</span>
+          </h3>
+          <div className="bg-[#F9F9FB] rounded-lg p-2 border border-surface-border">
+            <ResponsiveContainer width="100%" height={220}>
+              <LineChart data={lineData} margin={{ top: 10, right: 15, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E4E4EF" />
+                <XAxis dataKey="month" tick={{ fontSize: 11, fontFamily: "Roboto Mono", fill: "#5A5A7A" }} />
+                <YAxis tick={{ fontSize: 11, fontFamily: "Roboto Mono", fill: "#5A5A7A" }} />
+                <Tooltip
+                  contentStyle={{
+                    background: "#FFFFFF",
+                    border: "1px solid #E4E4EF",
+                    fontFamily: "Outfit",
+                    fontSize: "12px",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="Count"
+                  stroke="#3B82F6"
+                  strokeWidth={2.5}
+                  dot={{ fill: "#3B82F6", r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
           </div>
         </div>
 
-        <div className="card p-5 lg:col-span-2">
-          <h3 className="text-sm font-semibold text-slate-700 mb-3">Quick Actions</h3>
-          <div className="grid grid-cols-2 gap-3">
-            {QUICK_LINKS.map(({ to, icon: Icon, label, count, color }) => (
-              <Link key={to} to={to}
-                className={`flex items-center gap-3 p-3 rounded-xl border ${color} hover:opacity-80 transition-opacity`}>
-                <Icon className="w-4 h-4 shrink-0" />
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold">{label}</p>
-                  <p className="text-xs opacity-70 truncate">{count}</p>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── ALL GOALS WITH UNLOCK ── */}
-      <div className="card overflow-hidden">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-700">All Goals — {filteredGoals.length} shown</h3>
-          {/* Status filter tabs */}
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
-            {STATUS_FILTERS.map(s => (
-              <button key={s} onClick={() => setGoalsFilter(s)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all
-                  ${goalsFilter === s ? "bg-white shadow text-slate-800" : "text-slate-500 hover:text-slate-700"}`}>
-                {s === "ALL" ? "All" : s === "PENDING_APPROVAL" ? "Pending" : s.charAt(0) + s.slice(1).toLowerCase()}
-              </button>
-            ))}
-          </div>
-        </div>
-        {filteredGoals.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-10">No goals match this filter</p>
-        ) : (
-          <table className="w-full text-xs">
-            <thead className="bg-slate-50 border-b border-slate-100">
-              <tr>
-                {["Employee", "Goal Title", "Thrust Area", "Weight", "Status", "Action"].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filteredGoals.slice(0, 30).map((goal, i) => (
-                <motion.tr key={goal.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.02 }}
-                  className="border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-2.5">
-                    <p className="font-medium text-slate-700">{goal.owner?.name || "—"}</p>
-                    <p className="text-slate-400">{goal.owner?.department}</p>
-                  </td>
-                  <td className="px-4 py-2.5 max-w-[200px]">
-                    <p className="font-medium text-slate-700 truncate">{goal.title}</p>
-                    {goal.rejectionReason && <p className="text-red-400 truncate">↩ {goal.rejectionReason}</p>}
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-500">{goal.thrustArea?.name || "—"}</td>
-                  <td className="px-4 py-2.5 font-semibold text-slate-700">{goal.weightage}%</td>
-                  <td className="px-4 py-2.5"><StatusBadge status={goal.status} /></td>
-                  <td className="px-4 py-2.5">
-                    {goal.status === "LOCKED" && (
-                      <button onClick={() => handleUnlock(goal.id)} disabled={unlocking[goal.id]}
-                        className="btn-ghost text-xs py-1 text-amber-600 hover:bg-amber-50">
-                        {unlocking[goal.id] ? <Spinner size="sm" /> : <Unlock className="w-3 h-3" />} Unlock
-                      </button>
-                    )}
-                  </td>
-                </motion.tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-
-      {/* Recent audit */}
-      <div className="card p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-700">Recent Activity</h3>
-          <Link to="/admin/audit" className="text-xs text-brand-600 hover:underline font-medium">View all →</Link>
-        </div>
-        {audit.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-6">No activity yet</p>
-        ) : (
-          <div className="space-y-2">
-            {audit.slice(0, 6).map((a, i) => (
-              <div key={a.id || i} className="flex items-center gap-3 text-xs py-1.5 border-b border-slate-50 last:border-0">
-                <div className="w-1.5 h-1.5 rounded-full bg-brand-500 shrink-0" />
-                <span className="font-medium text-slate-700">{a.action}</span>
-                <span className="text-slate-400">on</span>
-                <span className="text-slate-600">{a.entityType}</span>
-                <span className="ml-auto text-slate-400 shrink-0">{fmtDateTime(a.timestamp)}</span>
+        {/* Right: Donut chart "Goal Status Distribution" */}
+        <div className="card p-5 flex flex-col justify-between">
+          <h3 className="text-[15px] font-bold text-ink-primary font-sans mb-2">Goal Status Distribution</h3>
+          <div className="flex-1 flex flex-col sm:flex-row items-center gap-6">
+            {donutData.length === 0 ? (
+              <div className="w-full text-center py-10 text-ink-secondary text-sm font-sans">
+                No active goals to display.
               </div>
-            ))}
+            ) : (
+              <>
+                <div className="w-full sm:w-1/2 h-[180px] relative">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={donutData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={55}
+                        outerRadius={75}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {donutData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip formatter={(value) => [`${value} Goals`]} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-xl font-bold font-mono text-ink-primary">{goals.length}</span>
+                    <span className="text-[10px] uppercase font-sans tracking-wide text-ink-secondary">Goals</span>
+                  </div>
+                </div>
+                {/* Legend with Outfit 13px */}
+                <div className="w-full sm:w-1/2 space-y-2">
+                  {donutData.map((d, i) => (
+                    <div key={i} className="flex items-center justify-between text-xs font-sans text-ink-primary">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ background: d.color }} />
+                        <span className="font-medium text-[13px]">{d.name}</span>
+                      </div>
+                      <span className="font-mono text-ink-secondary">{d.value}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
-        )}
+        </div>
+      </div>
+
+      {/* Lower split panels */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left Panel: Recently Active Users table */}
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-[15px] font-bold text-ink-primary font-sans">Recently Active Users</h3>
+            <Link to="/admin/users" className="text-xs text-accent hover:underline font-semibold flex items-center gap-1">
+              Manage Users <ArrowRight className="w-3 h-3" />
+            </Link>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-surface-border bg-[#F4F4FA]">
+                  {["Name", "Role", "Last Active", "Status"].map((h) => (
+                    <th key={h} className="px-3 py-2 text-[11px] font-sans font-semibold text-ink-secondary uppercase tracking-wide">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-border">
+                {users.slice(0, 5).map((user) => (
+                  <tr key={user.id} className="hover:bg-primary-tint/20 transition-colors">
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2">
+                        <div className="w-7 h-7 rounded-full bg-primary-tint text-primary-mid flex items-center justify-center text-xs font-bold shrink-0">
+                          {user.name?.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase()}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-ink-primary truncate">{user.name}</p>
+                          <p className="text-[10px] text-ink-secondary truncate">{user.email}</p>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${user.role === "ADMIN"
+                          ? "bg-primary text-white"
+                          : user.role === "MANAGER"
+                            ? "bg-accent-light text-accent"
+                            : "bg-primary-tint text-primary-mid"
+                          }`}
+                      >
+                        {user.role}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-ink-secondary">
+                      {fmtDateTime(user.updatedAt)}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={user.isActive}
+                          onChange={() => handleToggleActive(user)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-7 h-4 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-accent"></div>
+                      </label>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right Panel: Upcoming Cycle Deadlines list */}
+        <div className="card p-5 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-[15px] font-bold text-ink-primary font-sans">Upcoming Cycle Deadlines</h3>
+              <Link to="/admin/cycles" className="text-xs text-accent hover:underline font-semibold flex items-center gap-1">
+                Configure Cycles <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+            <div className="space-y-3">
+              {cycles.length === 0 ? (
+                <div className="text-center py-6 text-xs text-ink-secondary">No cycles defined yet.</div>
+              ) : (
+                cycles.map((c) => {
+                  const daysLeft = getDaysRemaining(c.goalSettingEnd);
+                  const pill = getCountdownBadge(daysLeft);
+                  return (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-surface-border hover:bg-primary-tint/20 transition-colors"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-[14px] font-sans font-semibold text-ink-primary truncate">{c.name}</p>
+                        <p className="text-[11px] font-mono text-ink-secondary mt-0.5">
+                          Goal Deadline: {fmtDate(c.goalSettingEnd)}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${pill.class}`}>
+                        {pill.label}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );

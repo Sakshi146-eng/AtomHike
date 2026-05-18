@@ -5,10 +5,10 @@ import Topbar from "./Topbar";
 
 export default function AppLayout() {
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-surface-bg font-body">
       <Sidebar />
       <Topbar />
-      <main className="ml-60 pt-14 min-h-screen">
+      <main className="ml-64 pt-16 min-h-screen">
         <motion.div
           key={window.location.pathname}
           initial={{ opacity: 0, y: 12 }}

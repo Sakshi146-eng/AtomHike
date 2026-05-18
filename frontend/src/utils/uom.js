@@ -15,11 +15,11 @@ export function computeAchievement(uomType, targetValue, actualValue, targetDate
   switch (uomType) {
     case "MIN":
       if (!targetValue || targetValue === 0 || !hasActualValue) return null;
-      return Math.min((actualValue / targetValue) * 100, 150);
+      return Math.min((actualValue / targetValue) * 100, 200);
     case "MAX":
       if (!targetValue || !hasActualValue) return null;
-      if (actualValue === 0) return 150;  // Zero cost/bugs = max performance
-      return Math.min((targetValue / actualValue) * 100, 150);
+      if (actualValue === 0) return 200;  // Zero cost/bugs = max performance
+      return Math.min((targetValue / actualValue) * 100, 200);
     case "TIMELINE":
       if (!targetDate || !hasActualDate) return null;
       return new Date(actualDate) <= new Date(targetDate) ? 100 : 50;
