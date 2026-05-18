@@ -196,19 +196,15 @@ Admin opens Quarter Window → Employee submits actuals → UoM engine calculate
 
 ## 💻 GitHub Repository
 
-```
-https://github.com/Sakshi146-eng/AtomHike
-```
 
-## 🌐 Live API (Backend)
+[https://github.com/Sakshi146-eng/AtomHike](https://github.com/Sakshi146-eng/AtomHike)
 
-```
-https://atomhike-backend.onrender.com/docs
-```
 
-## 🌐 Frontend (Under Development)
+## 🌐 Live API 
 
-To be updated soon
+
+[https://atomhike-backend.onrender.com/docs](https://atomhike-alpha.vercel.app/)
+
 
 ---
 
