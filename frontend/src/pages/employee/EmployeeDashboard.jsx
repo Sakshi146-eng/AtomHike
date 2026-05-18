@@ -250,12 +250,12 @@ export default function EmployeeDashboard() {
                 {/* Status Badge & Checkin Actions */}
                 <div className="flex items-center justify-between md:w-32 md:justify-end gap-3 shrink-0 pt-2 md:pt-0 border-t border-surface-border md:border-t-0">
                   <StatusBadge status={goal.status} />
-                  <Link
+                  {/* <Link
                     to="/employee/goals"
                     className="font-sans text-xs font-semibold text-accent flex items-center gap-0.5 hover:underline"
                   >
                     Update
-                  </Link>
+                  </Link> */}
                 </div>
               </motion.div>
             ))}
