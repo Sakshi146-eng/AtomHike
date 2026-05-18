@@ -203,7 +203,7 @@ Admin opens Quarter Window → Employee submits actuals → UoM engine calculate
 ## 🌐 Live API 
 
 
-[https://atomhike-backend.onrender.com/docs](https://atomhike-alpha.vercel.app/)
+[https://atomhike-alpha.vercel.app/](https://atomhike-alpha.vercel.app/)
 
 
 ---
