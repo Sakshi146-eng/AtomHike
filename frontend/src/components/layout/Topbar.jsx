@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Bell, CircleDot, User, X, CheckCircle2, AlertCircle } from "lucide-react";
+import { Bell, CircleDot, User, X, CheckCircle2, AlertCircle, Menu } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import { getActiveCycle } from "../../api/cycles";
 import { getMyGoals, getTeamGoals } from "../../api/goals";
@@ -21,7 +21,7 @@ const PAGE_TITLES = {
   "/admin/audit":        "Audit Trail",
 };
 
-export default function Topbar() {
+export default function Topbar({ onMenuToggle }) {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -83,20 +83,30 @@ export default function Topbar() {
   const unreadCount = notifications.length;
 
   return (
-    <header className="fixed top-0 left-64 right-0 z-20 h-16 bg-white border-b border-surface-border flex items-center px-8 gap-4">
-      {/* Breadcrumb / Title */}
-      <h1 className="font-sans font-semibold text-[14px] text-ink-primary flex-1">{title}</h1>
+    <header className="fixed top-0 left-0 right-0 lg:left-64 z-20 h-16 bg-white border-b border-surface-border flex items-center px-4 sm:px-8 gap-3">
 
-      {/* Cycle Status */}
+      {/* ── Hamburger: only on mobile/tablet ── */}
+      <button
+        onClick={onMenuToggle}
+        className="lg:hidden p-2 text-ink-secondary hover:text-primary hover:bg-surface-bg rounded-md transition-colors shrink-0"
+        aria-label="Open menu"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
+
+      {/* Breadcrumb / Title */}
+      <h1 className="font-sans font-semibold text-[14px] text-ink-primary flex-1 truncate">{title}</h1>
+
+      {/* Cycle Status — hidden on very small screens */}
       {cycle && (
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-status-success-light border border-[#bbf7d0]">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-status-success-light border border-[#bbf7d0] shrink-0">
           <CircleDot className="w-3.5 h-3.5 text-status-success" />
-          <span className="font-sans text-[12px] font-medium text-green-800">{cycle.name}</span>
+          <span className="font-sans text-[12px] font-medium text-green-800 whitespace-nowrap">{cycle.name}</span>
         </div>
       )}
 
       {/* Bell Notification */}
-      <div className="relative ml-2" ref={bellRef}>
+      <div className="relative ml-1 shrink-0" ref={bellRef}>
         <button
           onClick={() => setNotifOpen(o => !o)}
           className="relative p-2 text-ink-secondary hover:text-primary hover:bg-surface-bg rounded-md transition-colors"
@@ -109,9 +119,9 @@ export default function Topbar() {
           )}
         </button>
 
-        {/* Dropdown */}
+        {/* Dropdown — full-width on xs, fixed width on sm+ */}
         {notifOpen && (
-          <div className="absolute right-0 top-[calc(100%+8px)] w-80 bg-white border border-surface-border rounded-2xl shadow-xl z-50 overflow-hidden">
+          <div className="absolute right-0 top-[calc(100%+8px)] w-[calc(100vw-2rem)] sm:w-80 max-w-xs bg-white border border-surface-border rounded-2xl shadow-xl z-50 overflow-hidden">
             {/* Header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-surface-border">
               <p className="font-sans text-[13px] font-semibold text-primary">
@@ -157,10 +167,10 @@ export default function Topbar() {
         )}
       </div>
 
-      <div className="w-[1px] h-6 bg-surface-border mx-2"></div>
+      <div className="w-[1px] h-6 bg-surface-border mx-1 hidden sm:block"></div>
 
-      {/* Avatar & Role */}
-      <div className="flex items-center gap-3">
+      {/* Avatar & Role — name hidden on mobile */}
+      <div className="flex items-center gap-2 shrink-0">
         <div className="text-right hidden sm:block">
           <p className="font-sans text-[13px] font-semibold text-ink-primary leading-tight">{user?.name}</p>
           <span className="inline-block mt-1 px-2 py-0.5 rounded bg-primary-tint text-primary font-sans text-[10px] font-bold uppercase tracking-wide">

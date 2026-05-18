@@ -209,10 +209,10 @@ export default function UsersPage() {
       ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left">
+            <table className="w-full text-left min-w-[460px]">
               <thead>
                 <tr className="bg-[#F4F4FA] border-b border-surface-border">
-                  {["User", "Role", "Manager", "Status", "Actions"].map((h) => (
+                  {["User", "Role", "Manager", "Actions"].map((h) => (
                     <th key={h} className="px-5 py-3 text-[12px] font-sans font-semibold text-ink-secondary uppercase tracking-wide">
                       {h}
                     </th>
@@ -253,17 +253,6 @@ export default function UsersPage() {
                     </td>
                     <td className="px-5 py-3.5 text-[14px] font-sans text-ink-primary">
                       {managers.find((m) => m.id === u.managerId)?.name || <span className="text-ink-secondary/50">—</span>}
-                    </td>
-                    <td className="px-5 py-3.5">
-                      <label className="relative inline-flex items-center cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={u.isActive}
-                          onChange={() => handleToggleActive(u)}
-                          className="sr-only peer"
-                        />
-                        <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-accent"></div>
-                      </label>
                     </td>
                     <td className="px-5 py-3.5">
                       <div className="flex gap-2">

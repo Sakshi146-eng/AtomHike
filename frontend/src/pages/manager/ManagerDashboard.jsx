@@ -82,12 +82,12 @@ export default function ManagerDashboard() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Team Dashboard</h2>
           <p className="text-sm text-slate-500">{cycle?.name} · {team.length} direct reports</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 self-start sm:self-center">
           {/* Notification Bell — shows pending count */}
           <div className="relative">
             <button onClick={() => setNotifOpen(o => !o)}

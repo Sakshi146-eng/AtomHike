@@ -86,7 +86,7 @@ export default function GoalApprovalPage() {
               </div>
 
               {/* Goal details grid */}
-              <div className="grid grid-cols-3 gap-3 mb-4 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4 text-xs">
                 <div className="bg-slate-50 rounded-lg p-2.5">
                   <p className="text-slate-400 mb-0.5">Thrust Area</p>
                   <p className="font-medium text-slate-700">{goal.thrustArea?.name || "—"}</p>

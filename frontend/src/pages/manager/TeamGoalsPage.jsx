@@ -85,7 +85,7 @@ export default function TeamGoalsPage() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div>
           <h2 className="text-xl font-bold text-slate-800">Team Goals</h2>
           <p className="text-sm text-slate-500">{goals.length} total goals · click Share on any LOCKED/DRAFT goal to push it to employees</p>
@@ -93,10 +93,10 @@ export default function TeamGoalsPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
-        <input className="input max-w-xs" placeholder="Search goals or employees…"
+      <div className="flex flex-col sm:flex-row flex-wrap gap-3">
+        <input className="input w-full sm:max-w-xs" placeholder="Search goals or employees…"
           value={search} onChange={e => setSearch(e.target.value)} />
-        <div className="flex gap-1 p-1 bg-slate-100 rounded-xl">
+        <div className="flex flex-wrap gap-1 p-1 bg-slate-100 rounded-xl">
           {STATUS_FILTERS.map(s => (
             <button key={s} onClick={() => setFilter(s)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
@@ -135,7 +135,8 @@ export default function TeamGoalsPage() {
               </div>
 
               {/* Goals table */}
-              <table className="w-full text-xs">
+              <div className="overflow-x-auto">
+              <table className="w-full text-xs min-w-[520px]">
                 <thead>
                   <tr className="text-slate-400 border-b border-slate-100">
                     <th className="px-5 py-2 text-left font-medium">Goal</th>
@@ -169,6 +170,7 @@ export default function TeamGoalsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </motion.div>
           ))}
         </div>

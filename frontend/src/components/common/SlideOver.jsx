@@ -24,7 +24,7 @@ export default function SlideOver({ open, onClose, title, children, width = "max
           <motion.div
             initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
             transition={{ type: "spring", damping: 28, stiffness: 300 }}
-            className={`fixed inset-y-0 right-0 z-50 w-full ${width} bg-surface-bg shadow-2xl flex flex-col`}
+            className={`fixed inset-y-0 right-0 z-50 w-full sm:${width} bg-surface-bg shadow-2xl flex flex-col`}
           >
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-surface-border">
